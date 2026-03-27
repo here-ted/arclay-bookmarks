@@ -1,0 +1,186 @@
+:root {
+  --bg-color: #f7f7f8;
+  --text-color: #2c2c2c;
+  --text-muted: #888888;
+  --hover-bg: rgba(0, 0, 0, 0.05);
+  --active-bg: rgba(0, 0, 0, 0.08);
+  --divider-color: #e5e5e5;
+  --panel-radius: 8px;
+  --transition-speed: 0.15s;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-color: #1e1e1e;
+    --text-color: #e0e0e0;
+    --text-muted: #888888;
+    --hover-bg: rgba(255, 255, 255, 0.08);
+    --active-bg: rgba(255, 255, 255, 0.12);
+    --divider-color: #333333;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  user-select: none; /* Prevent text selection like an app */
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* By default take half screen, but can be adjusted later */
+  overflow: hidden;
+  padding: 8px 0;
+}
+
+.section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 4px 16px;
+  margin-bottom: 4px;
+}
+
+.tree-container, .list-container {
+  overflow-y: auto;
+  flex-grow: 1;
+  padding: 0 8px;
+}
+
+/* Scrollbar styles to look slim and modern */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--text-muted);
+  border-radius: 10px;
+  opacity: 0.5;
+}
+
+.divider {
+  height: 4px; /* Slightly thicker for easier grabbing */
+  background-color: var(--divider-color);
+  margin: 0;
+  flex-shrink: 0;
+  cursor: row-resize;
+  transition: background-color var(--transition-speed);
+}
+.divider:hover, .divider.active {
+  background-color: var(--text-muted);
+}
+
+/* Item styles for bookmarks and tabs */
+.item-header, .tab-node {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color var(--transition-speed);
+  margin-bottom: 2px;
+}
+
+.item-header:hover, .tab-node:hover {
+  background-color: var(--hover-bg);
+}
+
+.item-header:active, .tab-node:active {
+  background-color: var(--active-bg);
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.folder-icon {
+  font-size: 14px;
+}
+
+.title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-grow: 1;
+}
+
+.folder-children {
+  padding-left: 16px;
+  position: relative;
+}
+
+/* Subtle line to show folder hierarchy */
+.folder-children::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--divider-color);
+  opacity: 0.5;
+}
+
+.folder.collapsed > .folder-children {
+  display: none;
+}
+.folder.collapsed > .item-header {
+  opacity: 0.8;
+}
+
+.bookmark-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.item-header.drag-over {
+  background-color: var(--hover-bg);
+  border: 1px dashed var(--text-muted);
+}
+
+.action-btn {
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-left: 8px;
+  transition: opacity var(--transition-speed), background-color var(--transition-speed);
+}
+.action-btn:hover {
+  background-color: var(--divider-color);
+  color: var(--text-color);
+}
+.item-header:hover .action-btn, 
+.tab-node:hover .action-btn {
+  opacity: 1;
+}
+

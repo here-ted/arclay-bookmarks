@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arc-like Sidebar</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 上半部分: 书签 -->
+    <div id="bookmarks-section" class="section">
+      <div class="section-header">Bookmarks</div>
+      <div id="bookmarks-tree" class="tree-container">
+        <!-- Bookmark DOM nodes will be inserted here dynamically -->
+      </div>
+    </div>
+    
+    <!-- 分割线 -->
+    <div class="divider" id="drag-divider"></div>
+    
+    <!-- 下半部分: 未保存标签页 -->
+    <div id="tabs-section" class="section">
+      <div class="section-header">Open Tabs</div>
+      <div id="tabs-list" class="list-container">
+        <!-- Tab DOM nodes will be inserted here dynamically -->
+      </div>
+    </div>
+  </div>
+  <script src="sidebar.js"></script>
+</body>
+</html>
