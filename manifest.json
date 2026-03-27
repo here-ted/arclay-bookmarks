@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Arc Sidebar Bookmarks & Tabs",
+  "name": "Arclay Bookmarks - 阿克莱书签",
   "version": "1.0",
-  "description": "An Arc-style sidebar for managing bookmarks and open tabs.",
+  "description": "A sidebar extension for managing bookmarks and open tabs.",
   "permissions": [
     "sidePanel",
     "bookmarks",
@@ -17,6 +17,6 @@
     "default_path": "sidebar.html"
   },
   "action": {
-    "default_title": "Open Sidebar"
+    "default_title": "Open Arclay Bookmarks"
   }
 }
