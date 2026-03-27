@@ -57,6 +57,16 @@ function initTabsReordering() {
 }
 
 
+function normalizeUrl(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname.replace(/\/$/, '') + u.search + u.hash;
+  } catch (e) {
+    return url.replace(/\/$/, '');
+  }
+}
+
 function getFaviconUrl(url) {
   const urlObj = new URL(chrome.runtime.getURL('/_favicon/'));
   urlObj.searchParams.set('pageUrl', url);
@@ -67,20 +77,31 @@ function getFaviconUrl(url) {
 async function initBookmarks() {
   const tree = await chrome.bookmarks.getTree();
   const tabs = await chrome.tabs.query({});
+  
   const openUrlsMap = new Map();
   tabs.forEach(tab => {
-     if (tab.url) openUrlsMap.set(tab.url, tab.id);
+     if (tab.url) openUrlsMap.set(normalizeUrl(tab.url), tab.id);
   });
+  
+  const data = await chrome.storage.session.get('bookmarkTabs');
+  const bookmarkTabsMap = data.bookmarkTabs || {};
+  const explicitlyOpenBookmarks = new Map();
+  for (const [tabIdStr, bId] of Object.entries(bookmarkTabsMap)) {
+      const tabId = parseInt(tabIdStr, 10);
+      if (tabs.some(t => t.id === tabId)) {
+          explicitlyOpenBookmarks.set(bId, tabId);
+      }
+  }
   
   const container = document.getElementById('bookmarks-tree');
   container.innerHTML = '';
   const rootNodes = tree[0].children || [];
   rootNodes.forEach(node => {
-     container.appendChild(renderBookmarkNode(node, openUrlsMap));
+     container.appendChild(renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks));
   });
 }
 
-function renderBookmarkNode(node, openUrlsMap) {
+function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
   const el = document.createElement('div');
   el.className = 'bookmark-node';
   el.dataset.id = node.id;
@@ -102,7 +123,7 @@ function renderBookmarkNode(node, openUrlsMap) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'folder-children';
     node.children.forEach(child => {
-      childrenContainer.appendChild(renderBookmarkNode(child, openUrlsMap));
+      childrenContainer.appendChild(renderBookmarkNode(child, openUrlsMap, explicitlyOpenBookmarks));
     });
     
     header.addEventListener('click', (e) => {
@@ -115,7 +136,19 @@ function renderBookmarkNode(node, openUrlsMap) {
     el.appendChild(childrenContainer);
   } else {
     el.classList.add('bookmark');
-    const isOpen = openUrlsMap && openUrlsMap.has(node.url);
+    const normalizedNodeUrl = normalizeUrl(node.url);
+    
+    let isOpen = false;
+    let associatedTabId = null;
+
+    if (explicitlyOpenBookmarks && explicitlyOpenBookmarks.has(node.id)) {
+        isOpen = true;
+        associatedTabId = explicitlyOpenBookmarks.get(node.id);
+    } else if (openUrlsMap && openUrlsMap.has(normalizedNodeUrl)) {
+        isOpen = true;
+        associatedTabId = openUrlsMap.get(normalizedNodeUrl);
+    }
+
     const btnIcon = isOpen ? '✕' : '−';
     const btnTitle = isOpen ? '关闭标签页' : '删除书签';
     
@@ -129,9 +162,39 @@ function renderBookmarkNode(node, openUrlsMap) {
     
     header.addEventListener('click', async (e) => {
        if (e.target.closest('.action-btn')) return;
-       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-       if (tabs.length > 0) {
-         chrome.tabs.update(tabs[0].id, { url: node.url });
+       
+       if (isOpen && associatedTabId) {
+          // Bookmark is already open somewhere, just switch to it
+          chrome.tabs.update(associatedTabId, { active: true }).catch(() => {});
+       } else {
+          // Bookmark is not open, open a new tab or reuse empty newtab
+          const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          const activeTab = activeTabs[0];
+          const isNewTab = activeTab && (
+              activeTab.url === 'chrome://newtab/' || 
+              activeTab.url === 'edge://newtab/' || 
+              activeTab.pendingUrl === 'chrome://newtab/' ||
+              activeTab.url === ''
+          );
+
+          let tabId;
+          if (isNewTab) {
+              tabId = activeTab.id;
+              const data = await chrome.storage.session.get('bookmarkTabs');
+              const map = data.bookmarkTabs || {};
+              map[tabId] = node.id;
+              await chrome.storage.session.set({ bookmarkTabs: map });
+              chrome.tabs.update(tabId, { url: node.url }).catch(() => {});
+          } else {
+              const newTab = await chrome.tabs.create({ url: node.url, active: true });
+              tabId = newTab.id;
+              const data = await chrome.storage.session.get('bookmarkTabs');
+              const map = data.bookmarkTabs || {};
+              map[tabId] = node.id;
+              await chrome.storage.session.set({ bookmarkTabs: map });
+              initTabs();
+              initBookmarks();
+          }
        }
     });
 
@@ -139,10 +202,9 @@ function renderBookmarkNode(node, openUrlsMap) {
     actionBtn.addEventListener('click', async (e) => {
        e.stopPropagation();
        if (isOpen) {
-         const tabId = openUrlsMap.get(node.url);
-         if (tabId) chrome.tabs.remove(tabId);
+         if (associatedTabId) chrome.tabs.remove(associatedTabId).catch(() => {});
        } else {
-         chrome.bookmarks.remove(node.id);
+         chrome.bookmarks.remove(node.id).catch(() => {});
        }
     });
     
@@ -211,7 +273,7 @@ async function getAllBookmarks() {
       const urls = new Set();
       function traverse(nodes) {
         for (const node of nodes) {
-          if (node.url) urls.add(node.url);
+          if (node.url) urls.add(normalizeUrl(node.url));
           if (node.children) traverse(node.children);
         }
       }
@@ -224,11 +286,23 @@ async function getAllBookmarks() {
 async function initTabs() {
   const bookmarkUrls = await getAllBookmarks();
   const tabs = await chrome.tabs.query({ currentWindow: true });
+  
+  const data = await chrome.storage.session.get('bookmarkTabs');
+  const bookmarkTabsMap = data.bookmarkTabs || {};
+
   const container = document.getElementById('tabs-list');
   container.innerHTML = '';
   
   tabs.forEach(tab => {
-     if (!bookmarkUrls.has(tab.url)) {
+     if (bookmarkTabsMap[tab.id]) {
+        return; // Exclude because it was explicitly launched from a bookmark
+     }
+
+     if (tab.url) {
+        if (!bookmarkUrls.has(normalizeUrl(tab.url))) {
+           container.appendChild(renderTabNode(tab));
+        }
+     } else {
         container.appendChild(renderTabNode(tab));
      }
   });
@@ -248,13 +322,13 @@ function renderTabNode(tab) {
   
   el.addEventListener('click', (e) => {
     if (e.target.closest('.action-btn')) return;
-    chrome.tabs.update(tab.id, { active: true });
+    chrome.tabs.update(tab.id, { active: true }).catch(() => {});
   });
 
   const actionBtn = el.querySelector('.action-btn');
   actionBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    chrome.tabs.remove(tab.id);
+    chrome.tabs.remove(tab.id).catch(() => {});
   });
 
   el.addEventListener('dragstart', (e) => {
@@ -283,7 +357,15 @@ function renderTabNode(tab) {
 // Listen to changes to keep UI in sync
 chrome.tabs.onCreated.addListener(initTabs);
 chrome.tabs.onUpdated.addListener(initTabs);
-chrome.tabs.onRemoved.addListener(initTabs);
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+   const data = await chrome.storage.session.get('bookmarkTabs');
+   if (data.bookmarkTabs && data.bookmarkTabs[tabId]) {
+      delete data.bookmarkTabs[tabId];
+      await chrome.storage.session.set({ bookmarkTabs: data.bookmarkTabs });
+   }
+   initTabs();
+   initBookmarks();
+});
 
 chrome.bookmarks.onCreated.addListener(() => { initBookmarks(); initTabs(); });
 chrome.bookmarks.onRemoved.addListener(() => { initBookmarks(); initTabs(); });
