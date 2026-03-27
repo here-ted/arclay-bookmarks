@@ -15,7 +15,6 @@ function initResizer() {
     isDragging = true;
     divider.classList.add('active');
     document.body.classList.add('resizing');
-    document.body.style.cursor = 'row-resize';
   });
   
   document.addEventListener('mousemove', (e) => {
@@ -30,7 +29,6 @@ function initResizer() {
       isDragging = false;
       divider.classList.remove('active');
       document.body.classList.remove('resizing');
-      document.body.style.cursor = '';
     }
   });
 }

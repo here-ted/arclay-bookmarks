@@ -7,6 +7,7 @@
   --divider-color: #e5e5e5;
   --panel-radius: 8px;
   --transition-speed: 0.15s;
+  --resize-cursor: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 6L8 10H16L12 6Z' fill='%238a8a8a'/%3E%3Cpath d='M12 18L16 14H8L12 18Z' fill='%238a8a8a'/%3E%3C/svg%3E") 12 12, ns-resize;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -82,15 +83,28 @@ body {
 }
 
 .divider {
-  height: 4px; /* Slightly thicker for easier grabbing */
-  background-color: var(--divider-color);
+  height: 14px;
   margin: 0;
   flex-shrink: 0;
-  cursor: row-resize;
+  cursor: var(--resize-cursor);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background-color var(--transition-speed);
 }
-.divider:hover, .divider.active {
+
+.divider::after {
+  content: '';
+  width: 36px;
+  height: 4px;
+  background-color: var(--divider-color);
+  border-radius: 4px;
+  transition: background-color var(--transition-speed), transform var(--transition-speed);
+}
+
+.divider:hover::after, .divider.active::after {
   background-color: var(--text-muted);
+  transform: scaleY(1.2);
 }
 
 /* Item styles for bookmarks and tabs */
@@ -194,4 +208,8 @@ body {
 body.resizing .tree-container,
 body.resizing .list-container {
   pointer-events: none;
+}
+
+body.resizing {
+  cursor: var(--resize-cursor) !important;
 }
