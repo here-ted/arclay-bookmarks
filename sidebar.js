@@ -97,7 +97,8 @@ async function initBookmarks() {
   container.innerHTML = '';
   const rootNodes = tree[0].children || [];
   rootNodes.forEach(node => {
-     container.appendChild(renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks));
+     const result = renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks);
+     container.appendChild(result.el);
   });
 }
 
@@ -109,6 +110,7 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
   if (node.index !== undefined) el.dataset.index = node.index;
   
   let header;
+  let hasOpenNode = false;
   
   if (node.children) {
     el.classList.add('folder');
@@ -123,8 +125,14 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'folder-children';
     node.children.forEach(child => {
-      childrenContainer.appendChild(renderBookmarkNode(child, openUrlsMap, explicitlyOpenBookmarks));
+      const result = renderBookmarkNode(child, openUrlsMap, explicitlyOpenBookmarks);
+      if (result.hasOpen) hasOpenNode = true;
+      childrenContainer.appendChild(result.el);
     });
+    
+    if (!hasOpenNode && node.parentId !== '0') {
+      el.classList.add('collapsed');
+    }
     
     header.addEventListener('click', (e) => {
       if (!e.target.closest('.action-btn')) {
@@ -148,6 +156,8 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
         isOpen = true;
         associatedTabId = openUrlsMap.get(normalizedNodeUrl);
     }
+
+    hasOpenNode = isOpen;
 
     const btnIcon = isOpen ? '✕' : '−';
     const btnTitle = isOpen ? '关闭标签页' : '删除书签';
@@ -264,7 +274,7 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
     } catch (err) {}
   });
 
-  return el;
+  return { el, hasOpen: hasOpenNode };
 }
 
 async function getAllBookmarks() {
