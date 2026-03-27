@@ -14,6 +14,7 @@ function initResizer() {
   divider.addEventListener('mousedown', (e) => {
     isDragging = true;
     divider.classList.add('active');
+    document.body.classList.add('resizing');
     document.body.style.cursor = 'row-resize';
   });
   
@@ -28,6 +29,7 @@ function initResizer() {
     if (isDragging) {
       isDragging = false;
       divider.classList.remove('active');
+      document.body.classList.remove('resizing');
       document.body.style.cursor = '';
     }
   });
@@ -94,15 +96,24 @@ async function initBookmarks() {
   }
   
   const container = document.getElementById('bookmarks-tree');
+  
+  const expandedFolders = new Set();
+  const isFirstLoad = container.children.length === 0;
+  if (!isFirstLoad) {
+    container.querySelectorAll('.folder:not(.collapsed)').forEach(el => {
+      if (el.dataset.id) expandedFolders.add(el.dataset.id);
+    });
+  }
+
   container.innerHTML = '';
   const rootNodes = tree[0].children || [];
   rootNodes.forEach(node => {
-     const result = renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks);
+     const result = renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expandedFolders, isFirstLoad);
      container.appendChild(result.el);
   });
 }
 
-function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
+function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expandedFolders, isFirstLoad) {
   const el = document.createElement('div');
   el.className = 'bookmark-node';
   el.dataset.id = node.id;
@@ -125,12 +136,13 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'folder-children';
     node.children.forEach(child => {
-      const result = renderBookmarkNode(child, openUrlsMap, explicitlyOpenBookmarks);
+      const result = renderBookmarkNode(child, openUrlsMap, explicitlyOpenBookmarks, expandedFolders, isFirstLoad);
       if (result.hasOpen) hasOpenNode = true;
       childrenContainer.appendChild(result.el);
     });
     
-    if (!hasOpenNode && node.parentId !== '0') {
+    const shouldCollapse = isFirstLoad ? !hasOpenNode : !expandedFolders.has(node.id);
+    if (shouldCollapse && node.parentId !== '0') {
       el.classList.add('collapsed');
     }
     

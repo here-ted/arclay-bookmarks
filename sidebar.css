@@ -40,9 +40,16 @@ body {
 .section {
   display: flex;
   flex-direction: column;
-  flex: 1; /* By default take half screen, but can be adjusted later */
   overflow: hidden;
   padding: 8px 0;
+}
+
+#bookmarks-section {
+  flex: 7;
+}
+
+#tabs-section {
+  flex: 3;
 }
 
 .section-header {
@@ -184,3 +191,7 @@ body {
   opacity: 1;
 }
 
+body.resizing .tree-container,
+body.resizing .list-container {
+  pointer-events: none;
+}
