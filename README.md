@@ -7,6 +7,7 @@ Arclike Bookmarks is a sidebar browser extension based on Chrome Manifest V3. It
 ## 🌟 Features
 
 - **Seamless Sidebar Integration (SidePanel API)**: Blends perfectly into your browser without obstructing web content.
+- **Keyboard Shortcut (Toggle)**: Quickly open or close the sidebar using `Alt+B` (customizable at `chrome://extensions/shortcuts`).
 - **Intuitive Bookmark Tree**: Displays all bookmarks and folders in a tree view, supporting seamless expand and collapse.
 - **Dynamic Tabs List**: A dedicated section to show your currently open (and unsaved) tabs, helping you keep track of your workflow.
 - **Drag & Drop Interactions**:

@@ -24,5 +24,13 @@
   },
   "action": {
     "default_title": "Open Arclike Bookmarks"
+  },
+  "commands": {
+    "toggle_sidebar": {
+      "suggested_key": {
+        "default": "Alt+B"
+      },
+      "description": "Toggle sidebar"
+    }
   }
 }

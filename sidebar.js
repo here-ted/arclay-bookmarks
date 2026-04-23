@@ -392,3 +392,11 @@ chrome.bookmarks.onRemoved.addListener(() => { initBookmarks(); initTabs(); });
 chrome.bookmarks.onChanged.addListener(initBookmarks);
 chrome.bookmarks.onMoved.addListener(initBookmarks);
 chrome.bookmarks.onChildrenReordered.addListener(initBookmarks);
+
+// Connect to background.js so it knows the side panel is open
+const port = chrome.runtime.connect({ name: 'sidepanel' });
+port.onMessage.addListener((message) => {
+  if (message.action === 'close') {
+    window.close();
+  }
+});
