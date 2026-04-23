@@ -1,8 +1,8 @@
-# Arclike Bookmarks
+# Arclay Bookmarks
 
 [中文](README_zh.md)
 
-Arclike Bookmarks is a sidebar browser extension based on Chrome Manifest V3. It's designed to provide an Arc-browser-like tab and bookmark management experience. By integrating bookmarks and currently open tabs into a single vertical sidebar, it makes it easier and more intuitive to browse, organize, and manage your webpages.
+Arclay Bookmarks is a sidebar browser extension based on Chrome Manifest V3. It's designed to provide an Arc-browser-like tab and bookmark management experience. By integrating bookmarks and currently open tabs into a single vertical sidebar, it makes it easier and more intuitive to browse, organize, and manage your webpages.
 
 ## 🌟 Features
 
@@ -26,7 +26,7 @@ As this extension is not yet published to the Chrome Web Store, please install i
 4. Ensure **Developer mode** is enabled in the top right corner.
 5. Click the **Load unpacked** button.
 6. Select the main folder of this repository.
-7. Once installed, click the extension icon in the browser toolbar or pin it to keep the Arclike Bookmarks sidebar handy!
+7. Once installed, click the extension icon in the browser toolbar or pin it to keep the Arclay Bookmarks sidebar handy!
 
 ## 🛠️ Tech Stack
 

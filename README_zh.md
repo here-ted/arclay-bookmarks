@@ -1,8 +1,8 @@
-# Arclike Bookmarks
+# Arclay Bookmarks
 
 [English](README.md)
 
-Arclike Bookmarks 是一款基于 Chrome Manifest V3 的侧边栏浏览器扩展，旨在为你提供类似 Arc 浏览器的标签页和书签管理体验。它将书签和当前打开的标签页巧妙地整合到一个垂直侧边栏中，让你可以更轻松地浏览、整理和组织你的网页。
+Arclay Bookmarks 是一款基于 Chrome Manifest V3 的侧边栏浏览器扩展，旨在为你提供类似 Arc 浏览器的标签页和书签管理体验。它将书签和当前打开的标签页巧妙地整合到一个垂直侧边栏中，让你可以更轻松地浏览、整理和组织你的网页。
 
 ## 🌟 主要特性 (Features)
 
@@ -26,7 +26,7 @@ Arclike Bookmarks 是一款基于 Chrome Manifest V3 的侧边栏浏览器扩展
 4. 确保在页面右上角开启 **开发者模式 (Developer mode)**。
 5. 点击 **加载已解压的扩展程序 (Load unpacked)** 按钮。
 6. 选择本仓库所在的主目录文件夹。
-7. 安装完成后，在浏览器工具栏中点击本扩展的图标，或将其固定以便随时打开 Arclike Bookmarks 侧边栏！
+7. 安装完成后，在浏览器工具栏中点击本扩展的图标，或将其固定以便随时打开 Arclay Bookmarks 侧边栏！
 
 ## 🛠️ 技术原理 (Tech Stack)
 
