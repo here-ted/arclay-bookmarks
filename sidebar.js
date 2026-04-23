@@ -170,7 +170,7 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expanded
     hasOpenNode = isOpen;
 
     const btnIcon = isOpen ? '✕' : '−';
-    const btnTitle = isOpen ? '关闭标签页' : '删除书签';
+    const btnTitle = isOpen ? 'Close tab' : 'Delete bookmark';
     
     header = document.createElement('div');
     header.className = 'item-header';
@@ -337,7 +337,7 @@ function renderTabNode(tab) {
   el.innerHTML = `
     <img class="icon" src="${tab.favIconUrl || getFaviconUrl(tab.url)}" alt="" />
     <span class="title">${tab.title}</span>
-    <div class="action-btn" title="关闭标签页">✕</div>
+    <div class="action-btn" title="Close tab">✕</div>
   `;
   
   el.addEventListener('click', (e) => {
