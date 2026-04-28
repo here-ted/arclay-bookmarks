@@ -1,10 +1,37 @@
+let searchQuery = '';
+let searchDebounceTimer = null;
+let expandedFolderIds = new Set();
+let hasRenderedBookmarkTree = false;
+
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Sidebar loaded');
-  initBookmarks();
-  initTabs();
+  initSearch();
+  renderSidebar();
   initTabsReordering();
   initResizer();
 });
+
+function getSearchQuery() {
+  return searchQuery.trim().toLowerCase();
+}
+
+async function renderSidebar() {
+  await initBookmarks();
+  await initTabs();
+}
+
+function initSearch() {
+  const searchInput = document.getElementById('search-input');
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', (event) => {
+    searchQuery = event.target.value;
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      renderSidebar();
+    }, 180);
+  });
+}
 
 function initResizer() {
   const divider = document.getElementById('drag-divider');
@@ -61,7 +88,8 @@ function normalizeUrl(url) {
   if (!url) return '';
   try {
     const u = new URL(url);
-    return u.origin + u.pathname.replace(/\/$/, '') + u.search + u.hash;
+    const pathname = u.pathname.length > 1 ? u.pathname.replace(/\/$/, '') : u.pathname;
+    return u.origin + pathname;
   } catch (e) {
     return url.replace(/\/$/, '');
   }
@@ -77,38 +105,329 @@ function getFaviconUrl(url) {
 async function initBookmarks() {
   const tree = await chrome.bookmarks.getTree();
   const tabs = await chrome.tabs.query({});
+  const rootNodes = tree[0].children || [];
+  const bookmarkIdsByUrl = collectBookmarkIdsByUrl(rootNodes);
   
   const openUrlsMap = new Map();
+  const tabsById = new Map();
   tabs.forEach(tab => {
-     if (tab.url) openUrlsMap.set(normalizeUrl(tab.url), tab.id);
+     if (tab.id !== undefined) {
+       tabsById.set(tab.id, tab);
+     }
+     if (tab.url) {
+       const normalizedTabUrl = normalizeUrl(tab.url);
+       if (normalizedTabUrl && !openUrlsMap.has(normalizedTabUrl)) {
+         openUrlsMap.set(normalizedTabUrl, tab);
+       }
+     }
   });
   
   const data = await chrome.storage.session.get('bookmarkTabs');
   const bookmarkTabsMap = data.bookmarkTabs || {};
+  let shouldPersistBookmarkTabs = false;
+  tabs.forEach(tab => {
+    if (!tab.url || bookmarkTabsMap[tab.id]) return;
+
+    const bookmarkId = bookmarkIdsByUrl.get(normalizeUrl(tab.url));
+    if (bookmarkId) {
+      bookmarkTabsMap[tab.id] = bookmarkId;
+      shouldPersistBookmarkTabs = true;
+    }
+  });
+
+  if (shouldPersistBookmarkTabs) {
+    await chrome.storage.session.set({ bookmarkTabs: bookmarkTabsMap });
+  }
+
   const explicitlyOpenBookmarks = new Map();
   for (const [tabIdStr, bId] of Object.entries(bookmarkTabsMap)) {
       const tabId = parseInt(tabIdStr, 10);
-      if (tabs.some(t => t.id === tabId)) {
-          explicitlyOpenBookmarks.set(bId, tabId);
+      if (tabsById.has(tabId)) {
+          explicitlyOpenBookmarks.set(bId, tabsById.get(tabId));
       }
   }
   
   const container = document.getElementById('bookmarks-tree');
+  const query = getSearchQuery();
+
+  if (query) {
+    container.innerHTML = '';
+    const results = collectBookmarkSearchResults(rootNodes, [], openUrlsMap, explicitlyOpenBookmarks, query);
+    results.forEach(result => {
+      container.appendChild(renderBookmarkSearchResult(result, openUrlsMap, explicitlyOpenBookmarks, query));
+    });
+    return;
+  }
   
   const expandedFolders = new Set();
-  const isFirstLoad = container.children.length === 0;
-  if (!isFirstLoad) {
+  const isFirstLoad = !hasRenderedBookmarkTree;
+  if (isFirstLoad) {
+    expandedFolderIds = new Set();
+  } else {
+    expandedFolderIds.forEach(id => expandedFolders.add(id));
     container.querySelectorAll('.folder:not(.collapsed)').forEach(el => {
       if (el.dataset.id) expandedFolders.add(el.dataset.id);
     });
+    expandedFolderIds = new Set(expandedFolders);
   }
 
   container.innerHTML = '';
-  const rootNodes = tree[0].children || [];
   rootNodes.forEach(node => {
      const result = renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expandedFolders, isFirstLoad);
      container.appendChild(result.el);
   });
+  hasRenderedBookmarkTree = true;
+}
+
+function collectBookmarkIdsByUrl(nodes) {
+  const bookmarkIdsByUrl = new Map();
+
+  function traverse(items) {
+    items.forEach(item => {
+      if (item.url) {
+        const normalizedUrl = normalizeUrl(item.url);
+        if (normalizedUrl && !bookmarkIdsByUrl.has(normalizedUrl)) {
+          bookmarkIdsByUrl.set(normalizedUrl, item.id);
+        }
+      }
+
+      if (item.children) {
+        traverse(item.children);
+      }
+    });
+  }
+
+  traverse(nodes);
+  return bookmarkIdsByUrl;
+}
+
+function getBookmarkOpenState(node, openUrlsMap, explicitlyOpenBookmarks) {
+  const normalizedNodeUrl = normalizeUrl(node.url);
+  let isOpen = false;
+  let associatedTabId = null;
+  let currentUrl = '';
+
+  if (explicitlyOpenBookmarks && explicitlyOpenBookmarks.has(node.id)) {
+    isOpen = true;
+    const tab = explicitlyOpenBookmarks.get(node.id);
+    associatedTabId = tab.id;
+    currentUrl = tab.url || tab.pendingUrl || '';
+  } else if (openUrlsMap && openUrlsMap.has(normalizedNodeUrl)) {
+    isOpen = true;
+    const tab = openUrlsMap.get(normalizedNodeUrl);
+    associatedTabId = tab.id;
+    currentUrl = tab.url || tab.pendingUrl || '';
+  }
+
+  return { isOpen, associatedTabId, normalizedNodeUrl, currentUrl };
+}
+
+function isSearchMatch(title, url, query) {
+  if (!query) return true;
+  const titleText = (title || '').toLowerCase();
+  const urlText = (url || '').toLowerCase();
+  return titleText.includes(query) || urlText.includes(query);
+}
+
+function appendHighlightedText(parent, text, query) {
+  const sourceText = text || '';
+  if (!query) {
+    parent.appendChild(document.createTextNode(sourceText));
+    return;
+  }
+
+  const lowerText = sourceText.toLowerCase();
+  let cursor = 0;
+  let matchIndex = lowerText.indexOf(query);
+
+  while (matchIndex !== -1) {
+    if (matchIndex > cursor) {
+      parent.appendChild(document.createTextNode(sourceText.slice(cursor, matchIndex)));
+    }
+
+    const mark = document.createElement('mark');
+    mark.appendChild(document.createTextNode(sourceText.slice(matchIndex, matchIndex + query.length)));
+    parent.appendChild(mark);
+
+    cursor = matchIndex + query.length;
+    matchIndex = lowerText.indexOf(query, cursor);
+  }
+
+  if (cursor < sourceText.length) {
+    parent.appendChild(document.createTextNode(sourceText.slice(cursor)));
+  }
+}
+
+function collectBookmarkSearchResults(nodes, folderPath, openUrlsMap, explicitlyOpenBookmarks, query) {
+  const results = [];
+
+  nodes.forEach(node => {
+    if (node.children) {
+      const nextPath = node.title ? [...folderPath, node.title] : folderPath;
+      results.push(...collectBookmarkSearchResults(node.children, nextPath, openUrlsMap, explicitlyOpenBookmarks, query));
+      return;
+    }
+
+    if (isSearchMatch(node.title, node.url, query)) {
+      results.push({
+        node,
+        folderPath: folderPath.join(' / '),
+        openState: getBookmarkOpenState(node, openUrlsMap, explicitlyOpenBookmarks)
+      });
+    }
+  });
+
+  return results;
+}
+
+function createActionButton(title, text) {
+  const actionBtn = document.createElement('div');
+  actionBtn.className = 'action-btn';
+  actionBtn.title = title;
+  actionBtn.textContent = text;
+  return actionBtn;
+}
+
+async function activateBookmark(node, isOpen, associatedTabId) {
+  if (isOpen && associatedTabId) {
+    chrome.tabs.update(associatedTabId, { active: true }).catch(() => {});
+    return;
+  }
+
+  const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const activeTab = activeTabs[0];
+  const isNewTab = activeTab && (
+    activeTab.url === 'chrome://newtab/' ||
+    activeTab.url === 'edge://newtab/' ||
+    activeTab.pendingUrl === 'chrome://newtab/' ||
+    activeTab.url === ''
+  );
+
+  let tabId;
+  if (isNewTab) {
+    tabId = activeTab.id;
+    const data = await chrome.storage.session.get('bookmarkTabs');
+    const map = data.bookmarkTabs || {};
+    map[tabId] = node.id;
+    await chrome.storage.session.set({ bookmarkTabs: map });
+    chrome.tabs.update(tabId, { url: node.url }).catch(() => {});
+  } else {
+    const newTab = await chrome.tabs.create({ url: node.url, active: true });
+    tabId = newTab.id;
+    const data = await chrome.storage.session.get('bookmarkTabs');
+    const map = data.bookmarkTabs || {};
+    map[tabId] = node.id;
+    await chrome.storage.session.set({ bookmarkTabs: map });
+    renderSidebar();
+  }
+}
+
+function renderBookmarkHeader(node, openState, query = '', folderPath = '') {
+  const { isOpen, associatedTabId, currentUrl } = openState;
+  const btnIcon = isOpen ? '✕' : '−';
+  const btnTitle = isOpen ? 'Close tab' : 'Delete bookmark';
+  const header = document.createElement('div');
+  header.className = 'item-header';
+  if (isOpen) {
+    header.classList.add('open-bookmark');
+  }
+
+  const icon = document.createElement('img');
+  icon.className = 'icon';
+  icon.src = getFaviconUrl(node.url);
+  icon.alt = '';
+  header.appendChild(icon);
+
+  if (query) {
+    const content = document.createElement('div');
+    content.className = 'item-content';
+
+    const title = document.createElement('span');
+    title.className = 'title';
+    appendHighlightedText(title, node.title, query);
+    content.appendChild(title);
+
+    if (folderPath) {
+      const path = document.createElement('span');
+      path.className = 'secondary-text';
+      path.textContent = folderPath;
+      content.appendChild(path);
+    }
+
+    const url = document.createElement('span');
+    url.className = 'secondary-text';
+    renderBookmarkUrl(url, node, openState, query);
+    content.appendChild(url);
+
+    header.appendChild(content);
+  } else {
+    const content = document.createElement('div');
+    content.className = 'item-content';
+
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = node.title;
+    content.appendChild(title);
+
+    if (isOpen && currentUrl) {
+      const url = document.createElement('span');
+      url.className = 'secondary-text';
+      renderBookmarkUrl(url, node, openState, query);
+      content.appendChild(url);
+    }
+
+    header.appendChild(content);
+  }
+
+  const actionBtn = createActionButton(btnTitle, btnIcon);
+  actionBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (isOpen) {
+      if (associatedTabId) chrome.tabs.remove(associatedTabId).catch(() => {});
+    } else {
+      chrome.bookmarks.remove(node.id).catch(() => {});
+    }
+  });
+  header.appendChild(actionBtn);
+
+  header.addEventListener('click', async (e) => {
+    if (e.target.closest('.action-btn')) return;
+    await activateBookmark(node, isOpen, associatedTabId);
+  });
+
+  return header;
+}
+
+function renderBookmarkUrl(parent, node, openState, query) {
+  const { isOpen, associatedTabId, currentUrl } = openState;
+  const displayUrl = isOpen && currentUrl ? currentUrl : node.url;
+  const isDifferentUrl = isOpen && currentUrl && currentUrl !== node.url;
+
+  if (isDifferentUrl) {
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'url-reset-btn';
+    resetBtn.title = 'Go back to bookmark URL';
+    resetBtn.textContent = '↩';
+    resetBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      chrome.tabs.update(associatedTabId, { url: node.url, active: true }).catch(() => {});
+    });
+    parent.appendChild(resetBtn);
+    parent.appendChild(document.createTextNode(' '));
+  }
+
+  appendHighlightedText(parent, displayUrl, query);
+}
+
+function renderBookmarkSearchResult(result, openUrlsMap, explicitlyOpenBookmarks, query) {
+  const el = document.createElement('div');
+  el.className = 'bookmark-node bookmark';
+  el.dataset.id = result.node.id;
+  if (result.node.parentId) el.dataset.parentId = result.node.parentId;
+  if (result.node.index !== undefined) el.dataset.index = result.node.index;
+  el.appendChild(renderBookmarkHeader(result.node, result.openState, query, result.folderPath));
+  return el;
 }
 
 function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expandedFolders, isFirstLoad) {
@@ -126,10 +445,16 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expanded
     
     header = document.createElement('div');
     header.className = 'item-header';
-    header.innerHTML = `
-      <span class="icon folder-icon">📁</span>
-      <span class="title">${node.title}</span>
-    `;
+
+    const icon = document.createElement('span');
+    icon.className = 'icon folder-icon';
+    icon.textContent = '📁';
+    header.appendChild(icon);
+
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = node.title;
+    header.appendChild(title);
     
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'folder-children';
@@ -142,11 +467,18 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expanded
     const shouldCollapse = isFirstLoad ? !hasOpenNode : !expandedFolders.has(node.id);
     if (shouldCollapse && node.parentId !== '0') {
       el.classList.add('collapsed');
+    } else if (node.id) {
+      expandedFolderIds.add(node.id);
     }
     
     header.addEventListener('click', (e) => {
       if (!e.target.closest('.action-btn')) {
         el.classList.toggle('collapsed');
+        if (el.classList.contains('collapsed')) {
+          expandedFolderIds.delete(node.id);
+        } else {
+          expandedFolderIds.add(node.id);
+        }
       }
     });
     
@@ -154,79 +486,11 @@ function renderBookmarkNode(node, openUrlsMap, explicitlyOpenBookmarks, expanded
     el.appendChild(childrenContainer);
   } else {
     el.classList.add('bookmark');
-    const normalizedNodeUrl = normalizeUrl(node.url);
-    
-    let isOpen = false;
-    let associatedTabId = null;
-
-    if (explicitlyOpenBookmarks && explicitlyOpenBookmarks.has(node.id)) {
-        isOpen = true;
-        associatedTabId = explicitlyOpenBookmarks.get(node.id);
-    } else if (openUrlsMap && openUrlsMap.has(normalizedNodeUrl)) {
-        isOpen = true;
-        associatedTabId = openUrlsMap.get(normalizedNodeUrl);
-    }
+    const openState = getBookmarkOpenState(node, openUrlsMap, explicitlyOpenBookmarks);
+    const { isOpen } = openState;
 
     hasOpenNode = isOpen;
-
-    const btnIcon = isOpen ? '✕' : '−';
-    const btnTitle = isOpen ? 'Close tab' : 'Delete bookmark';
-    
-    header = document.createElement('div');
-    header.className = 'item-header';
-    header.innerHTML = `
-      <img class="icon" src="${getFaviconUrl(node.url)}" alt="" />
-      <span class="title">${node.title}</span>
-      <div class="action-btn" title="${btnTitle}">${btnIcon}</div>
-    `;
-    
-    header.addEventListener('click', async (e) => {
-       if (e.target.closest('.action-btn')) return;
-       
-       if (isOpen && associatedTabId) {
-          // Bookmark is already open somewhere, just switch to it
-          chrome.tabs.update(associatedTabId, { active: true }).catch(() => {});
-       } else {
-          // Bookmark is not open, open a new tab or reuse empty newtab
-          const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-          const activeTab = activeTabs[0];
-          const isNewTab = activeTab && (
-              activeTab.url === 'chrome://newtab/' || 
-              activeTab.url === 'edge://newtab/' || 
-              activeTab.pendingUrl === 'chrome://newtab/' ||
-              activeTab.url === ''
-          );
-
-          let tabId;
-          if (isNewTab) {
-              tabId = activeTab.id;
-              const data = await chrome.storage.session.get('bookmarkTabs');
-              const map = data.bookmarkTabs || {};
-              map[tabId] = node.id;
-              await chrome.storage.session.set({ bookmarkTabs: map });
-              chrome.tabs.update(tabId, { url: node.url }).catch(() => {});
-          } else {
-              const newTab = await chrome.tabs.create({ url: node.url, active: true });
-              tabId = newTab.id;
-              const data = await chrome.storage.session.get('bookmarkTabs');
-              const map = data.bookmarkTabs || {};
-              map[tabId] = node.id;
-              await chrome.storage.session.set({ bookmarkTabs: map });
-              initTabs();
-              initBookmarks();
-          }
-       }
-    });
-
-    const actionBtn = header.querySelector('.action-btn');
-    actionBtn.addEventListener('click', async (e) => {
-       e.stopPropagation();
-       if (isOpen) {
-         if (associatedTabId) chrome.tabs.remove(associatedTabId).catch(() => {});
-       } else {
-         chrome.bookmarks.remove(node.id).catch(() => {});
-       }
-    });
+    header = renderBookmarkHeader(node, openState);
     
     el.appendChild(header);
   }
@@ -306,6 +570,7 @@ async function getAllBookmarks() {
 async function initTabs() {
   const bookmarkUrls = await getAllBookmarks();
   const tabs = await chrome.tabs.query({ currentWindow: true });
+  const query = getSearchQuery();
   
   const data = await chrome.storage.session.get('bookmarkTabs');
   const bookmarkTabsMap = data.bookmarkTabs || {};
@@ -319,33 +584,57 @@ async function initTabs() {
      }
 
      if (tab.url) {
-        if (!bookmarkUrls.has(normalizeUrl(tab.url))) {
-           container.appendChild(renderTabNode(tab));
+        if (!bookmarkUrls.has(normalizeUrl(tab.url)) && isSearchMatch(tab.title, tab.url, query)) {
+           container.appendChild(renderTabNode(tab, query));
         }
-     } else {
-        container.appendChild(renderTabNode(tab));
+     } else if (isSearchMatch(tab.title, tab.url, query)) {
+        container.appendChild(renderTabNode(tab, query));
      }
   });
 }
 
-function renderTabNode(tab) {
+function renderTabNode(tab, query = '') {
   const el = document.createElement('div');
   el.className = 'tab-node';
   el.draggable = true;
   el.dataset.tabId = tab.id;
-  
-  el.innerHTML = `
-    <img class="icon" src="${tab.favIconUrl || getFaviconUrl(tab.url)}" alt="" />
-    <span class="title">${tab.title}</span>
-    <div class="action-btn" title="Close tab">✕</div>
-  `;
+
+  const icon = document.createElement('img');
+  icon.className = 'icon';
+  icon.src = tab.favIconUrl || getFaviconUrl(tab.url);
+  icon.alt = '';
+  el.appendChild(icon);
+
+  if (query) {
+    const content = document.createElement('div');
+    content.className = 'item-content';
+
+    const title = document.createElement('span');
+    title.className = 'title';
+    appendHighlightedText(title, tab.title, query);
+    content.appendChild(title);
+
+    const url = document.createElement('span');
+    url.className = 'secondary-text';
+    appendHighlightedText(url, tab.url, query);
+    content.appendChild(url);
+
+    el.appendChild(content);
+  } else {
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = tab.title;
+    el.appendChild(title);
+  }
+
+  const actionBtn = createActionButton('Close tab', '✕');
+  el.appendChild(actionBtn);
   
   el.addEventListener('click', (e) => {
     if (e.target.closest('.action-btn')) return;
     chrome.tabs.update(tab.id, { active: true }).catch(() => {});
   });
 
-  const actionBtn = el.querySelector('.action-btn');
   actionBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     chrome.tabs.remove(tab.id).catch(() => {});
@@ -375,23 +664,22 @@ function renderTabNode(tab) {
 }
 
 // Listen to changes to keep UI in sync
-chrome.tabs.onCreated.addListener(initTabs);
-chrome.tabs.onUpdated.addListener(initTabs);
+chrome.tabs.onCreated.addListener(renderSidebar);
+chrome.tabs.onUpdated.addListener(renderSidebar);
 chrome.tabs.onRemoved.addListener(async (tabId) => {
    const data = await chrome.storage.session.get('bookmarkTabs');
    if (data.bookmarkTabs && data.bookmarkTabs[tabId]) {
       delete data.bookmarkTabs[tabId];
       await chrome.storage.session.set({ bookmarkTabs: data.bookmarkTabs });
    }
-   initTabs();
-   initBookmarks();
+   renderSidebar();
 });
 
-chrome.bookmarks.onCreated.addListener(() => { initBookmarks(); initTabs(); });
-chrome.bookmarks.onRemoved.addListener(() => { initBookmarks(); initTabs(); });
-chrome.bookmarks.onChanged.addListener(initBookmarks);
-chrome.bookmarks.onMoved.addListener(initBookmarks);
-chrome.bookmarks.onChildrenReordered.addListener(initBookmarks);
+chrome.bookmarks.onCreated.addListener(renderSidebar);
+chrome.bookmarks.onRemoved.addListener(renderSidebar);
+chrome.bookmarks.onChanged.addListener(renderSidebar);
+chrome.bookmarks.onMoved.addListener(renderSidebar);
+chrome.bookmarks.onChildrenReordered.addListener(renderSidebar);
 
 // Connect to background.js so it knows the side panel is open
 const port = chrome.runtime.connect({ name: 'sidepanel' });
