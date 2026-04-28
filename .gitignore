@@ -28,3 +28,11 @@ node_modules/
 # Env vars
 .env
 .env.local
+
+# AI
+.agent/
+.claude/
+.planning/
+AGENTS.md
+CLAUDE.md
+
