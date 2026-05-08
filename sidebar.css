@@ -1,4 +1,21 @@
+:root {
+  --system-header-bg: #ffffff;
+  --system-search-bg: #f6f7f9;
+  --system-search-text: #24272d;
+  --system-search-border: #dde2eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --system-header-bg: #2b2b2b;
+    --system-search-bg: #3b3b3b;
+    --system-search-text: #ebeef3;
+    --system-search-border: #4b4b4b;
+  }
+}
+
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg-color: #f6f7f9;
   --surface-color: #ffffff;
   --text-color: #24272d;
@@ -16,6 +33,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg-color: #181a1f;
   --surface-color: #22252c;
   --text-color: #ebeef3;
@@ -38,9 +56,10 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
-  user-select: none; /* 保持应用式交互，避免拖拽时选中文字 */
+  user-select: none;
   height: 100vh;
   overflow: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 #app {
@@ -51,18 +70,19 @@ body {
 
 .search-container {
   flex-shrink: 0;
-  padding: 8px 12px 4px;
+  padding: 18px 12px 20px;
+  background: linear-gradient(to bottom, var(--system-header-bg) 0%, var(--system-header-bg) 15%, transparent 100%);
 }
 
 #search-input {
   width: 100%;
   box-sizing: border-box;
   padding: 7px 9px;
-  border: 1px solid var(--divider-color);
+  border: 1px solid var(--system-search-border);
   border-radius: 6px;
   outline: none;
-  background-color: var(--surface-color);
-  color: var(--text-color);
+  background-color: var(--system-search-bg);
+  color: var(--system-search-text);
   font: inherit;
   font-size: 13px;
   transition: border-color var(--transition-speed), box-shadow var(--transition-speed), background-color var(--transition-speed);
@@ -105,19 +125,11 @@ body {
   position: relative;
 }
 
-/* 让滚动条保持轻量 */
+/* 隐藏滚动条但保留滚动功能 */
 ::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--text-muted) 60%, transparent);
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-muted);
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .divider {
@@ -181,6 +193,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+:root[data-theme="dark"] img.icon {
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 3px rgba(255, 255, 255, 0.4));
 }
 
 .folder-icon {

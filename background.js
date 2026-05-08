@@ -1,6 +1,3 @@
-// The user's Chrome version throws a fatal error for openPanelOnActionIconClick.
-// We remove setPanelBehavior and only rely on the action click listener to open the panel.
-
 let isSidePanelOpen = false;
 let sidePanelPort = null;
 

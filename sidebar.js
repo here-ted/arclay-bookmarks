@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSidebar();
   initTabsReordering();
   initResizer();
+  updateDynamicBackground();
 });
 
 function getSearchQuery() {
@@ -897,6 +898,15 @@ function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFi
         el.classList.toggle('collapsed');
         if (el.classList.contains('collapsed')) {
           expandedFolderIds.delete(node.id);
+          // Collapse all descendant folders
+          const descendantFolders = el.querySelectorAll('.folder');
+          descendantFolders.forEach(descEl => {
+            descEl.classList.add('collapsed');
+            const descId = descEl.dataset.id;
+            if (descId) expandedFolderIds.delete(descId);
+            const descIcon = descEl.querySelector(':scope > .item-header > .folder-icon');
+            if (descIcon) descIcon.textContent = '📁';
+          });
         } else {
           expandedFolderIds.add(node.id);
         }
@@ -1105,7 +1115,10 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (newUrl) pendingUrlChanges.set(tab.id, newUrl);
   renderSidebar();
 });
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tab.active && (changeInfo.url || changeInfo.pendingUrl || changeInfo.favIconUrl)) {
+    updateDynamicBackground();
+  }
   if (changeInfo.url || changeInfo.pendingUrl) {
     const newUrl = changeInfo.url || changeInfo.pendingUrl;
     if (newUrl) pendingUrlChanges.set(tabId, newUrl);
@@ -1139,3 +1152,91 @@ port.onMessage.addListener((message) => {
     window.close();
   }
 });
+
+chrome.tabs.onActivated.addListener(() => {
+  updateDynamicBackground();
+});
+
+async function updateDynamicBackground() {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs || tabs.length === 0) return;
+    const activeTab = tabs[0];
+    
+    let pageColor = null;
+
+    if (activeTab.url && (activeTab.url.startsWith('chrome://') || activeTab.url.startsWith('edge://'))) {
+      pageColor = window.matchMedia('(prefers-color-scheme: dark)').matches ? '#181a1f' : '#f6f7f9';
+    } else if (activeTab.id) {
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: () => {
+            const bgColor = window.getComputedStyle(document.body).backgroundColor;
+            if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') return bgColor;
+            
+            const htmlColor = window.getComputedStyle(document.documentElement).backgroundColor;
+            if (htmlColor && htmlColor !== 'rgba(0, 0, 0, 0)' && htmlColor !== 'transparent') return htmlColor;
+
+            const metaTheme = document.querySelector('meta[name="theme-color"]');
+            if (metaTheme && metaTheme.content) return metaTheme.content;
+            
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? '#181a1f' : '#f6f7f9';
+          }
+        });
+        if (results && results[0] && results[0].result) {
+          pageColor = results[0].result;
+        }
+      } catch (e) {
+        // Content script failed, fallback
+      }
+    }
+    
+    if (!pageColor) {
+      pageColor = window.matchMedia('(prefers-color-scheme: dark)').matches ? '#181a1f' : '#f6f7f9';
+    }
+
+    applyColorToSidebar(pageColor);
+  } catch (err) {
+    console.error('Failed to update dynamic background', err);
+  }
+}
+
+function applyColorToSidebar(colorStr) {
+  const dummy = document.createElement('div');
+  dummy.style.color = colorStr;
+  document.body.appendChild(dummy);
+  const rgbStr = window.getComputedStyle(dummy).color;
+  document.body.removeChild(dummy);
+  
+  const match = rgbStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!match) return;
+  
+  const r = parseInt(match[1], 10);
+  const g = parseInt(match[2], 10);
+  const b = parseInt(match[3], 10);
+  
+  const rgbColor = `rgb(${r}, ${g}, ${b})`;
+  document.documentElement.style.setProperty('--bg-color', rgbColor);
+  
+  let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (!metaThemeColor) {
+    metaThemeColor = document.createElement('meta');
+    metaThemeColor.name = "theme-color";
+    document.head.appendChild(metaThemeColor);
+  }
+  metaThemeColor.content = rgbColor;
+  
+  const luminance = getLuminance(r, g, b);
+  const isDark = luminance < 0.5;
+  
+  document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+}
+
+function getLuminance(r, g, b) {
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    c = c / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
