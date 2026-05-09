@@ -492,8 +492,9 @@ async function initBookmarks() {
   }
 
   const fragment = document.createDocumentFragment();
-  rootNodes.forEach(node => {
-     const result = renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad);
+  rootNodes.forEach((node, index) => {
+     const isRootFirstChild = index === 0;
+     const result = renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild);
      fragment.appendChild(result.el);
   });
   return () => {
@@ -852,7 +853,7 @@ function renderBookmarkSearchResult(result, explicitlyOpenBookmarks, query) {
   return el;
 }
 
-function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad) {
+function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild = false) {
   const el = document.createElement('div');
   el.className = 'bookmark-node';
   el.dataset.id = node.id;
@@ -886,7 +887,8 @@ function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFi
     });
     
     const shouldCollapse = isFirstLoad ? !hasOpenNode : !expandedFolders.has(node.id);
-    if (shouldCollapse && node.parentId !== '0') {
+    const preventCollapse = node.parentId === '0' && isRootFirstChild;
+    if (shouldCollapse && !preventCollapse) {
       el.classList.add('collapsed');
     } else if (node.id) {
       expandedFolderIds.add(node.id);
