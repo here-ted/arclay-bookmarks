@@ -18,7 +18,14 @@ Arclay Bookmarks is a sidebar browser extension based on Chrome Manifest V3. It'
 
 ## 🚀 Installation
 
-As this extension is not yet published to the Chrome Web Store, please install it locally using "Developer mode":
+### Official Store (Recommended)
+
+- **Chrome Web Store**: [Install from Chrome Web Store](https://chromewebstore.google.com/detail/arclay-bookmarks/phhcblhkigmiobgepopjdnoeehgclmlh)
+- **Microsoft Edge Add-ons**: [Install from Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/arclay-bookmarks/pfmjlhdejkdmdfjdekklelikfpfoaajh)
+
+### Local Developer Mode
+
+If you want to test the latest code or contribute, please install it locally using "Developer mode":
 
 1. Clone or download this repository to your local machine.
 2. Open a Chromium-based browser (e.g., Chrome or Edge).
