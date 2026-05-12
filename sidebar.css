@@ -173,6 +173,12 @@ body {
   background-color: var(--hover-bg);
 }
 
+.item-header.keyboard-selected, .tab-node.keyboard-selected {
+  background-color: var(--hover-bg);
+  outline: 1px solid var(--accent-color);
+  outline-offset: -1px;
+}
+
 .item-header:active, .tab-node:active {
   background-color: var(--active-bg);
 }

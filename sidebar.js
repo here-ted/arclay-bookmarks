@@ -9,6 +9,7 @@ let draggingType = null;
 let bookmarkFaviconCache = {};
 let suppressedBookmarkIds = new Set();
 let pendingUrlChanges = new Map();
+let currentSelectedIndex = -1;
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Sidebar loaded');
@@ -48,6 +49,8 @@ async function executeRender() {
       pendingMovePositions = null;
       requestAnimationFrame(() => playMoveAnimations(previousPositions));
     }
+
+    applyDefaultSelection();
   } catch (err) {
     console.error('Render error:', err);
   } finally {
@@ -72,13 +75,77 @@ function initSearch() {
   const searchInput = document.getElementById('search-input');
   if (!searchInput) return;
 
+  requestAnimationFrame(() => searchInput.focus());
+
   searchInput.addEventListener('input', (event) => {
     searchQuery = event.target.value;
+    currentSelectedIndex = -1;
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
       renderSidebar();
     }, 180);
   });
+
+  searchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      navigateSearchResults(event.key === 'ArrowDown' ? 1 : -1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      openSelectedSearchResult();
+    }
+  });
+}
+
+function getSelectableItems() {
+  const items = Array.from(document.querySelectorAll('.bookmark-node > .item-header, .tab-node'));
+  return items.filter(el => {
+    let parent = el.parentElement;
+    while (parent) {
+      if (parent.classList.contains('folder-children') && parent.parentElement.classList.contains('collapsed')) {
+        return false;
+      }
+      parent = parent.parentElement;
+    }
+    return true;
+  });
+}
+
+function navigateSearchResults(direction) {
+  const items = getSelectableItems();
+  if (items.length === 0) return;
+
+  if (currentSelectedIndex >= 0 && currentSelectedIndex < items.length) {
+    items[currentSelectedIndex].classList.remove('keyboard-selected');
+  }
+
+  currentSelectedIndex += direction;
+
+  if (currentSelectedIndex < 0) {
+    currentSelectedIndex = items.length - 1;
+  } else if (currentSelectedIndex >= items.length) {
+    currentSelectedIndex = 0;
+  }
+
+  const selectedItem = items[currentSelectedIndex];
+  selectedItem.classList.add('keyboard-selected');
+  selectedItem.scrollIntoView({ block: 'nearest' });
+}
+
+function openSelectedSearchResult() {
+  if (currentSelectedIndex < 0) return;
+  const items = getSelectableItems();
+  if (currentSelectedIndex < items.length) {
+    const selectedItem = items[currentSelectedIndex];
+    selectedItem.click();
+  }
+}
+
+function applyDefaultSelection() {
+  if (getSearchQuery()) {
+    currentSelectedIndex = -1;
+    navigateSearchResults(1);
+  }
 }
 
 function initResizer() {
