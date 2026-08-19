@@ -453,8 +453,11 @@ function createFaviconImg(src) {
 }
 
 async function initBookmarks() {
-  const tree = await chrome.bookmarks.getTree();
-  const tabs = await chrome.tabs.query({});
+  const [tree, tabs, data] = await Promise.all([
+    chrome.bookmarks.getTree(),
+    chrome.tabs.query({}),
+    chrome.storage.session.get(['bookmarkTabs', 'bookmarkFavicons'])
+  ]);
   const rootNodes = tree[0].children || [];
   const bookmarkIdsByUrl = collectBookmarkIdsByUrl(rootNodes);
 
@@ -465,7 +468,6 @@ async function initBookmarks() {
      }
   });
 
-  const data = await chrome.storage.session.get(['bookmarkTabs', 'bookmarkFavicons']);
   const bookmarkTabsMap = data.bookmarkTabs || {};
   Object.assign(bookmarkFaviconCache, data.bookmarkFavicons || {});
   let shouldPersistBookmarkTabs = false;
@@ -559,9 +561,10 @@ async function initBookmarks() {
   }
 
   const fragment = document.createDocumentFragment();
+  const openFolderIds = collectOpenFolderIds(rootNodes, new Set(explicitlyOpenBookmarks.keys()));
   rootNodes.forEach((node, index) => {
      const isRootFirstChild = index === 0;
-     const result = renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild);
+     const result = renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild, openFolderIds);
      fragment.appendChild(result.el);
   });
   return () => {
@@ -604,6 +607,30 @@ function collectAllBookmarkIds(nodes) {
   }
   traverse(nodes);
   return ids;
+}
+
+function collectOpenFolderIds(nodes, openBookmarkIds) {
+  const openFolderIds = new Set();
+  if (openBookmarkIds.size === 0) return openFolderIds;
+
+  function traverse(items) {
+    let hasOpenDescendant = false;
+    items.forEach(item => {
+      if (item.children) {
+        const hasOpenChild = traverse(item.children);
+        if (hasOpenChild) {
+          openFolderIds.add(item.id);
+          hasOpenDescendant = true;
+        }
+      } else if (openBookmarkIds.has(item.id)) {
+        hasOpenDescendant = true;
+      }
+    });
+    return hasOpenDescendant;
+  }
+
+  traverse(nodes);
+  return openFolderIds;
 }
 
 function getBookmarkOpenState(node, explicitlyOpenBookmarks) {
@@ -920,7 +947,7 @@ function renderBookmarkSearchResult(result, explicitlyOpenBookmarks, query) {
   return el;
 }
 
-function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild = false) {
+function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFirstLoad, isRootFirstChild = false, openFolderIds = new Set()) {
   const el = document.createElement('div');
   el.className = 'bookmark-node';
   el.dataset.id = node.id;
@@ -947,11 +974,7 @@ function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFi
     
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'folder-children';
-    node.children.forEach(child => {
-      const result = renderBookmarkNode(child, explicitlyOpenBookmarks, expandedFolders, isFirstLoad);
-      if (result.hasOpen) hasOpenNode = true;
-      childrenContainer.appendChild(result.el);
-    });
+    hasOpenNode = openFolderIds.has(node.id);
     
     const shouldCollapse = isFirstLoad ? !hasOpenNode : !expandedFolders.has(node.id);
     const preventCollapse = node.parentId === '0' && isRootFirstChild;
@@ -961,6 +984,20 @@ function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFi
       expandedFolderIds.add(node.id);
     }
     icon.textContent = el.classList.contains('collapsed') ? '📁' : '📂';
+    let hasRenderedChildren = false;
+
+    const renderChildren = (renderAsFirstLoad) => {
+      if (hasRenderedChildren) return;
+      node.children.forEach(child => {
+        const result = renderBookmarkNode(child, explicitlyOpenBookmarks, expandedFolders, renderAsFirstLoad, false, openFolderIds);
+        childrenContainer.appendChild(result.el);
+      });
+      hasRenderedChildren = true;
+    };
+
+    if (!el.classList.contains('collapsed')) {
+      renderChildren(isFirstLoad);
+    }
     
     header.addEventListener('click', (e) => {
       if (!e.target.closest('.action-btn')) {
@@ -977,6 +1014,7 @@ function renderBookmarkNode(node, explicitlyOpenBookmarks, expandedFolders, isFi
             if (descIcon) descIcon.textContent = '📁';
           });
         } else {
+          renderChildren(false);
           expandedFolderIds.add(node.id);
         }
         icon.textContent = el.classList.contains('collapsed') ? '📁' : '📂';
