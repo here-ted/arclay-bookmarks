@@ -6,6 +6,8 @@ let hasRenderedBookmarkTree = false;
 let pendingMovePositions = null;
 let activeDropIndicator = null;
 let draggingType = null;
+let bookmarkAutoScrollFrame = null;
+let bookmarkAutoScrollPointerY = null;
 let bookmarkFaviconCache = {};
 let suppressedBookmarkIds = new Set();
 let pendingUrlChanges = new Map();
@@ -16,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearch();
   renderSidebar();
   initTabsReordering();
+  initBookmarkAutoScroll();
   initResizer();
   updateDynamicBackground();
 });
@@ -221,6 +224,62 @@ function initTabsReordering() {
       }
     } catch (err) {}
   });
+}
+
+function initBookmarkAutoScroll() {
+  const container = document.getElementById('bookmarks-tree');
+  const edgeSize = 40;
+  const maxSpeed = 18;
+
+  function getScrollDelta() {
+    if (bookmarkAutoScrollPointerY === null) return 0;
+
+    const rect = container.getBoundingClientRect();
+    if (bookmarkAutoScrollPointerY < rect.top + edgeSize) {
+      return -Math.ceil((rect.top + edgeSize - bookmarkAutoScrollPointerY) / edgeSize * maxSpeed);
+    }
+    if (bookmarkAutoScrollPointerY > rect.bottom - edgeSize) {
+      return Math.ceil((bookmarkAutoScrollPointerY - (rect.bottom - edgeSize)) / edgeSize * maxSpeed);
+    }
+    return 0;
+  }
+
+  function stopAutoScroll() {
+    bookmarkAutoScrollPointerY = null;
+    if (bookmarkAutoScrollFrame !== null) {
+      cancelAnimationFrame(bookmarkAutoScrollFrame);
+      bookmarkAutoScrollFrame = null;
+    }
+  }
+
+  function autoScroll() {
+    bookmarkAutoScrollFrame = null;
+    const delta = getScrollDelta();
+    if (!delta) return;
+
+    const previousScrollTop = container.scrollTop;
+    container.scrollTop += delta;
+    if (container.scrollTop !== previousScrollTop) {
+      bookmarkAutoScrollFrame = requestAnimationFrame(autoScroll);
+    }
+  }
+
+  container.addEventListener('dragover', (event) => {
+    if (!draggingType) return;
+
+    bookmarkAutoScrollPointerY = event.clientY;
+    if (getScrollDelta() && bookmarkAutoScrollFrame === null) {
+      bookmarkAutoScrollFrame = requestAnimationFrame(autoScroll);
+    } else if (!getScrollDelta()) {
+      stopAutoScroll();
+    }
+  }, true);
+
+  container.addEventListener('dragleave', (event) => {
+    if (!container.contains(event.relatedTarget)) stopAutoScroll();
+  }, true);
+  container.addEventListener('drop', stopAutoScroll, true);
+  document.addEventListener('dragend', stopAutoScroll, true);
 }
 
 function getTabDropTarget(container, event) {
